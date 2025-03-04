@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
@@ -102,8 +104,32 @@ impl Context {
 #[serde(rename_all = "kebab-case")]
 pub struct Project {
     env_files: Vec<String>,
+    tools: VecMap<Tool>,
     #[serde(flatten)]
     package: Package,
+}
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct Tool {
+    #[serde(alias = "bin")]
+    binary: String,
+    ci: Option<ToolCi>,
+}
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ToolCi {
+    Action {
+        action: String,
+        #[serde(default)]
+        with: VecMap<String>,
+    },
+    #[serde(rename_all = "kebab-case")]
+    Binary {
+        install_action: String,
+        #[serde(default)]
+        with: VecMap<String>,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -114,21 +140,24 @@ pub struct Package {
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 #[repr(transparent)]
-pub struct Tasks(#[serde_as(as = "serde_with::Map<_, _>")] Vec<(String, Task)>);
+pub struct Tasks(VecMap<Task>);
 
 impl Tasks {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Task)> {
-        self.0.iter().map(|(name, task)| (name.as_str(), task))
+        self.0.iter()
     }
 }
 
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Task {
-    #[serde(alias = "desc", skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
     #[serde(default, skip_serializing_if = "skip_false")]
     internal: bool,
+    #[serde(alias = "desc", skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, alias = "deps")]
+    dependencies: Vec<TaskName>,
+    #[serde(default)]
     #[serde_as(as = "serde_with::OneOrMany<_>")]
     run: Vec<Run>,
 }
@@ -140,6 +169,48 @@ impl Task {
 
     pub fn is_internal(&self) -> bool {
         self.internal
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
+pub enum TaskName {
+    Local(String),
+    Root(String),
+    Qualified { project: String, task: String },
+}
+
+impl FromStr for TaskName {
+    type Err = Never;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((project, task)) = s.split_once('/') {
+            let task = task.to_owned();
+            if project.is_empty() {
+                Ok(Self::Root(task))
+            } else {
+                let project = project.to_owned();
+                Ok(Self::Qualified { project, task })
+            }
+        } else {
+            Ok(Self::Local(s.to_owned()))
+        }
+    }
+}
+
+impl fmt::Display for TaskName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskName::Local(task) => f.write_str(task),
+            TaskName::Root(task) => {
+                f.write_str("/")?;
+                f.write_str(task)
+            }
+            TaskName::Qualified { project, task } => {
+                f.write_str(project)?;
+                f.write_str("/")?;
+                f.write_str(task)
+            }
+        }
     }
 }
 
@@ -254,6 +325,38 @@ impl<'de> Deserialize<'de> for Run {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[doc(hidden)]
+pub struct Never {}
+
+impl fmt::Display for Never {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[repr(transparent)]
+struct VecMap<T: for<'a> Deserialize<'a> + Serialize>(
+    #[serde_as(as = "serde_with::Map<_, _>")] Vec<(String, T)>,
+);
+
+impl<T: for<'de> Deserialize<'de> + Serialize> VecMap<T> {
+    fn iter(&self) -> impl Iterator<Item = (&str, &T)> {
+        self.0.iter().map(|(key, value)| (key.as_str(), value))
+    }
+}
+
+impl<T: for<'de> Deserialize<'de> + Serialize + PartialEq> PartialEq for VecMap<T> {
+    fn eq(&self, other: &Self) -> bool {
+        type Map<'a, T> = HashMap<&'a str, &'a T>;
+        let lhs = self.iter().collect::<Map<T>>();
+        let rhs = other.iter().collect::<Map<T>>();
+        lhs.eq(&rhs)
+    }
+}
+
 fn skip_false(b: &bool) -> bool {
     !*b
 }
@@ -307,7 +410,9 @@ mod tests {
     #[test]
     fn task_run_single() {
         let task = Task {
-            desc: None,
+            internal: false,
+            description: None,
+            dependencies: vec![],
             run: vec![command("echo test", true)],
         };
         toml_eq!(task, r#"test = { run = "@echo test" }"#);
@@ -316,9 +421,71 @@ mod tests {
     #[test]
     fn task_run_multiple() {
         let task = Task {
-            desc: None,
+            internal: false,
+            description: None,
+            dependencies: vec![],
             run: vec![command("one", false), command("two", false)],
         };
         toml_eq!(task, r#"test = { run = ["one", "two"] }"#);
+    }
+
+    #[test]
+    fn task_dependencies() {
+        let task = Task {
+            internal: false,
+            description: None,
+            dependencies: vec![
+                TaskName::Local("local".to_owned()),
+                TaskName::Root("root".to_owned()),
+                TaskName::Qualified {
+                    project: "some".to_owned(),
+                    task: "other".to_owned(),
+                },
+            ],
+            run: vec![],
+        };
+        toml_eq!(
+            task,
+            r#"test = { deps = ["local", "/root", "some/other"] }"#
+        );
+    }
+
+    #[test]
+    fn tool_simple() {
+        let tool = Tool {
+            binary: "tool".to_owned(),
+            ci: None,
+        };
+        toml_eq!(tool, r#"test.bin = "tool""#);
+    }
+
+    #[test]
+    fn tool_ci_action() {
+        let tool = Tool {
+            binary: "tool".to_owned(),
+            ci: Some(ToolCi::Action {
+                action: "ci/action".to_owned(),
+                with: VecMap(vec![("some".to_owned(), "thing".to_owned())]),
+            }),
+        };
+        toml_eq!(
+            tool,
+            r#"test = { bin = "tool", ci.action = "ci/action", ci.with.some = "thing" }"#
+        );
+    }
+
+    #[test]
+    fn tool_ci_binary() {
+        let tool = Tool {
+            binary: "tool".to_owned(),
+            ci: Some(ToolCi::Binary {
+                install_action: "install/action".to_owned(),
+                with: VecMap::default(),
+            }),
+        };
+        toml_eq!(
+            tool,
+            r#"test = { bin = "tool", ci.install-action = "install/action" }"#
+        );
     }
 }
