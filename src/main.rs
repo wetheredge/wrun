@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
         env::current_dir()?
     };
 
-    let context = wrun::Context::from_directory(directory)?;
+    let mut context = wrun::Context::from_directory(directory)?;
 
     if args.tasks.is_empty() {
         let tasks = context.local_tasks();
@@ -35,6 +35,12 @@ fn main() -> anyhow::Result<()> {
                 println!("  {name:18}  {}", task.description().unwrap_or_default());
             }
         }
+
+        return Ok(());
+    }
+
+    for task in args.tasks {
+        context.run(&task)?;
     }
 
     Ok(())
