@@ -1,9 +1,10 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+use crate::VecMap;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -237,28 +238,6 @@ pub struct Never {}
 impl fmt::Display for Never {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
-    }
-}
-
-#[serde_as]
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[repr(transparent)]
-struct VecMap<T: for<'a> Deserialize<'a> + Serialize>(
-    #[serde_as(as = "serde_with::Map<_, _>")] Vec<(String, T)>,
-);
-
-impl<T: for<'de> Deserialize<'de> + Serialize> VecMap<T> {
-    fn iter(&self) -> impl Iterator<Item = (&str, &T)> {
-        self.0.iter().map(|(key, value)| (key.as_str(), value))
-    }
-}
-
-impl<T: for<'de> Deserialize<'de> + Serialize + PartialEq> PartialEq for VecMap<T> {
-    fn eq(&self, other: &Self) -> bool {
-        type Map<'a, T> = HashMap<&'a str, &'a T>;
-        let lhs = self.iter().collect::<Map<T>>();
-        let rhs = other.iter().collect::<Map<T>>();
-        lhs.eq(&rhs)
     }
 }
 

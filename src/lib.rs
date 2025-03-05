@@ -1,10 +1,13 @@
 mod data;
+mod vec_map;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::bail;
+
+use self::vec_map::VecMap;
 
 const PROJECT_FILE: &str = "wrun-project.toml";
 const PACKAGE_FILE: &str = "wrun.toml";
