@@ -1,4 +1,4 @@
-mod graph;
+mod data;
 
 use std::collections::HashMap;
 use std::fs;
@@ -12,9 +12,9 @@ const PACKAGE_FILE: &str = "wrun.toml";
 #[derive(Debug)]
 pub struct Context {
     root: PathBuf,
-    project: graph::Project,
-    local: Option<(String, graph::Package)>,
-    others: HashMap<String, graph::Package>,
+    project: data::Project,
+    local: Option<(String, data::Package)>,
+    others: HashMap<String, data::Package>,
 }
 
 impl Context {
@@ -56,11 +56,11 @@ impl Context {
         Ok(context)
     }
 
-    fn load_package(&self, path: &Path) -> anyhow::Result<graph::Package> {
+    fn load_package(&self, path: &Path) -> anyhow::Result<data::Package> {
         toml_from_path(&self.root.join(path).join(PACKAGE_FILE))
     }
 
-    fn get_package(&mut self, name: &str) -> anyhow::Result<&graph::Package> {
+    fn get_package(&mut self, name: &str) -> anyhow::Result<&data::Package> {
         if let Some((local, package)) = &self.local {
             if local == name {
                 return Ok(package);
@@ -75,7 +75,7 @@ impl Context {
         Ok(self.others.get(name).unwrap())
     }
 
-    pub fn local_tasks(&self) -> &graph::Tasks {
+    pub fn local_tasks(&self) -> &data::Tasks {
         if let Some((_, package)) = &self.local {
             &package.tasks
         } else {
