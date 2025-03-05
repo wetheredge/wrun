@@ -88,7 +88,7 @@ impl FromStr for TaskName {
     type Err = Never;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((package, task)) = s.split_once('/') {
+        if let Some((package, task)) = s.rsplit_once('/') {
             let task = task.to_owned();
             if package.is_empty() {
                 Ok(Self::Root(task))
@@ -301,6 +301,11 @@ mod tests {
         ($expected:expr, $toml:expr) => {
             assert_eq!(Wrapper { test: $expected }, toml::from_str($toml).unwrap());
         };
+    }
+
+    #[test]
+    fn deep_task_name() {
+        toml_eq!(task!("foo/bar" / "baz"), r#"test = "foo/bar/baz""#);
     }
 
     #[test]
