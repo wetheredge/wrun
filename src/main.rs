@@ -39,9 +39,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    for task in args.tasks {
-        context.run(&task)?;
+    let mut plan = context.plan();
+    for task in &args.tasks {
+        plan.push(&wrun::TaskName::new(task))?;
     }
+    plan.execute()?;
 
     Ok(())
 }

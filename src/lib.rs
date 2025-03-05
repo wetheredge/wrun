@@ -1,12 +1,14 @@
 mod data;
 mod vec_map;
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use anyhow::bail;
 
+pub use self::data::TaskName;
+use self::data::{Package, Tool};
 use self::vec_map::VecMap;
 
 const PROJECT_FILE: &str = "wrun-project.toml";
@@ -15,9 +17,10 @@ const PACKAGE_FILE: &str = "wrun.toml";
 #[derive(Debug)]
 pub struct Context {
     root: PathBuf,
-    project: data::Project,
-    local: Option<(String, data::Package)>,
-    others: HashMap<String, data::Package>,
+    env_files: Vec<PathBuf>,
+    tools: VecMap<Tool>,
+    local: Option<String>,
+    packages: VecMap<Package>,
 }
 
 impl Context {
@@ -41,64 +44,115 @@ impl Context {
             bail!("failed to find project root")
         };
 
-        let project = toml_from_path(&root.join(PROJECT_FILE))?;
+        let data::Project {
+            env_files,
+            tools,
+            package: root_package,
+        } = toml_from_path(&root.join(PROJECT_FILE))?;
         let mut context = Self {
             root,
-            project,
+            env_files,
+            tools,
             local: None,
-            others: HashMap::new(),
+            packages: VecMap::default(),
         };
+        context.packages.insert(String::new(), root_package);
 
         if let Some(path) = package_dir {
             let relative = path.strip_prefix(&context.root).unwrap();
             let name = relative.to_string_lossy().into_owned();
             let package = context.load_package(relative)?;
-            context.local = Some((name, package));
+            context.packages.insert(name.clone(), package);
+            context.local = Some(name);
         }
 
         Ok(context)
     }
 
-    fn load_package(&self, path: &Path) -> anyhow::Result<data::Package> {
+    fn load_package(&self, path: &Path) -> anyhow::Result<Package> {
         toml_from_path(&self.root.join(path).join(PACKAGE_FILE))
     }
 
-    fn get_package(&mut self, name: &str) -> anyhow::Result<&data::Package> {
-        if let Some((local, package)) = &self.local {
-            if local == name {
-                return Ok(package);
-            }
+    fn get_package<'a>(&'a mut self, name: &str) -> anyhow::Result<&'a Package> {
+        // TODO: use regular .get() once rust allows the borrow to end with the if
+        if let Some(index) = self.packages.get_index(name) {
+            return Ok(self.packages.get_by_index(index).unwrap());
         }
 
-        if !self.others.contains_key(name) {
-            let package = self.load_package(Path::new(name))?;
-            self.others.insert(name.to_owned(), package);
-        }
+        let package = self.load_package(Path::new(name))?;
+        let package = self.packages.insert(name.to_owned(), package);
+        Ok(package)
+    }
 
-        Ok(self.others.get(name).unwrap())
+    pub fn local_package_name(&self) -> &str {
+        if let Some(local) = &self.local {
+            local
+        } else {
+            ""
+        }
     }
 
     pub fn local_tasks(&self) -> &data::Tasks {
-        if let Some((_, package)) = &self.local {
-            &package.tasks
-        } else {
-            &self.project.package.tasks
-        }
+        let package = self.local.as_deref().unwrap_or("");
+        let package = self.packages.get(package).unwrap();
+        &package.tasks
     }
 
-    pub fn run(&mut self, task: &str) -> anyhow::Result<()> {
-        let (package, task) = if let Some((package, task)) = task.split_once('/') {
-            (self.get_package(package)?, task)
-        } else if let Some((_, package)) = self.local.as_ref() {
-            (package, task)
-        } else {
-            (&self.project.package, task)
-        };
+    pub fn plan(&mut self) -> Plan {
+        Plan {
+            context: self,
+            plan: Vec::new(),
+        }
+    }
+}
 
-        dbg!(task, package);
+#[derive(Debug)]
+pub struct Plan<'a> {
+    context: &'a mut Context,
+    plan: Vec<Command>,
+}
+
+impl Plan<'_> {
+    pub fn push(&mut self, task: &TaskName) -> anyhow::Result<()> {
+        let package = task
+            .package()
+            .unwrap_or_else(|| self.context.local_package_name())
+            .to_owned();
+        let package = self.context.get_package(&package)?;
+
+        let Some(task) = package.tasks.0.get(task.task()) else {
+            bail!("Cannot find task: {task}")
+        };
+        let task = Rc::clone(task);
+
+        for run in &task.run {
+            match run {
+                data::Run::Command { command, silent } => {
+                    self.plan.push(Command {
+                        command: command.clone(),
+                        silent: *silent,
+                    });
+                }
+                data::Run::Task(task) => self.push(task)?,
+            }
+        }
 
         Ok(())
     }
+
+    pub fn execute(self) -> anyhow::Result<()> {
+        for Command { command, .. } in &self.plan {
+            dbg!(command);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct Command {
+    command: String,
+    silent: bool,
 }
 
 fn toml_from_path<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {

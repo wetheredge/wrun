@@ -1,4 +1,6 @@
 use std::fmt;
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -8,9 +10,9 @@ use crate::VecMap;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct Project {
-    env_files: Vec<String>,
-    tools: VecMap<Tool>,
+pub(crate) struct Project {
+    pub(crate) env_files: Vec<PathBuf>,
+    pub(crate) tools: VecMap<Tool>,
     #[serde(flatten)]
     pub(crate) package: Package,
 }
@@ -46,11 +48,13 @@ pub struct Package {
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 #[repr(transparent)]
-pub struct Tasks(VecMap<Task>);
+pub struct Tasks(pub(crate) VecMap<Rc<Task>>);
 
 impl Tasks {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Task)> {
-        self.0.iter()
+        self.0
+            .iter()
+            .map(|(key, task)| -> (&str, &Task) { (key, task) })
     }
 }
 
@@ -61,11 +65,9 @@ pub struct Task {
     internal: bool,
     #[serde(alias = "desc", skip_serializing_if = "Option::is_none")]
     description: Option<String>,
-    #[serde(default, alias = "deps")]
-    dependencies: Vec<TaskName>,
     #[serde(default)]
     #[serde_as(as = "serde_with::OneOrMany<_>")]
-    run: Vec<Run>,
+    pub(crate) run: Vec<Run>,
 }
 
 impl Task {
@@ -85,21 +87,40 @@ pub enum TaskName {
     Qualified { package: String, task: String },
 }
 
+impl TaskName {
+    pub fn new(raw: &str) -> Self {
+        if let Some((package, task)) = raw.rsplit_once('/') {
+            let task = task.to_owned();
+            if package.is_empty() {
+                Self::Root(task)
+            } else {
+                let package = package.to_owned();
+                Self::Qualified { package, task }
+            }
+        } else {
+            Self::Local(raw.to_owned())
+        }
+    }
+
+    pub(crate) fn package(&self) -> Option<&str> {
+        match self {
+            TaskName::Local(_) => None,
+            TaskName::Root(_) => Some(""),
+            TaskName::Qualified { package, task: _ } => Some(package),
+        }
+    }
+
+    pub(crate) fn task(&self) -> &str {
+        let (Self::Local(task) | Self::Root(task) | Self::Qualified { task, .. }) = &self;
+        task
+    }
+}
+
 impl FromStr for TaskName {
     type Err = Never;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((package, task)) = s.rsplit_once('/') {
-            let task = task.to_owned();
-            if package.is_empty() {
-                Ok(Self::Root(task))
-            } else {
-                let package = package.to_owned();
-                Ok(Self::Qualified { package, task })
-            }
-        } else {
-            Ok(Self::Local(s.to_owned()))
-        }
+        Ok(Self::new(s))
     }
 }
 
@@ -325,7 +346,6 @@ mod tests {
         let task = Task {
             internal: false,
             description: None,
-            dependencies: vec![],
             run: vec![command("echo test", true)],
         };
         toml_eq!(task, r#"test = { run = "@echo test" }"#);
@@ -336,21 +356,26 @@ mod tests {
         let task = Task {
             internal: false,
             description: None,
-            dependencies: vec![],
             run: vec![command("one", false), command("two", false)],
         };
         toml_eq!(task, r#"test = { run = ["one", "two"] }"#);
     }
 
     #[test]
-    fn task_dependencies() {
+    fn task_run_others() {
         let task = Task {
             internal: false,
             description: None,
-            dependencies: vec![task!("local"), task!(/ "root"), task!("some" / "other")],
-            run: vec![],
+            run: vec![
+                Run::Task(task!("local")),
+                Run::Task(task!(/ "root")),
+                Run::Task(task!("some" / "other")),
+            ],
         };
-        toml_eq!(task, r#"test.deps = ["local", "/root", "some/other"]"#);
+        toml_eq!(
+            task,
+            r#"test.run = [{ task = "local" }, { task = "/root" }, { task = "some/other" }]"#
+        );
     }
 
     #[test]
