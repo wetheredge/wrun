@@ -81,20 +81,20 @@ impl Task {
 pub enum TaskName {
     Local(String),
     Root(String),
-    Qualified { project: String, task: String },
+    Qualified { package: String, task: String },
 }
 
 impl FromStr for TaskName {
     type Err = Never;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((project, task)) = s.split_once('/') {
+        if let Some((package, task)) = s.split_once('/') {
             let task = task.to_owned();
-            if project.is_empty() {
+            if package.is_empty() {
                 Ok(Self::Root(task))
             } else {
-                let project = project.to_owned();
-                Ok(Self::Qualified { project, task })
+                let package = package.to_owned();
+                Ok(Self::Qualified { package, task })
             }
         } else {
             Ok(Self::Local(s.to_owned()))
@@ -110,8 +110,8 @@ impl fmt::Display for TaskName {
                 f.write_str("/")?;
                 f.write_str(task)
             }
-            TaskName::Qualified { project, task } => {
-                f.write_str(project)?;
+            TaskName::Qualified { package, task } => {
+                f.write_str(package)?;
                 f.write_str("/")?;
                 f.write_str(task)
             }
@@ -122,7 +122,7 @@ impl fmt::Display for TaskName {
 #[derive(Debug, Serialize, PartialEq)]
 pub enum Run {
     Command { command: String, silent: bool },
-    Task(String),
+    Task(TaskName),
 }
 
 impl<'de> Deserialize<'de> for Run {
@@ -282,6 +282,21 @@ mod tests {
         }
     }
 
+    macro_rules! task {
+        ($package:literal / $task:literal) => {
+            TaskName::Qualified {
+                package: $package.to_owned(),
+                task: $task.to_owned(),
+            }
+        };
+        (/ $task:literal) => {
+            TaskName::Root($task.to_owned())
+        };
+        ($task:literal) => {
+            TaskName::Local($task.to_owned())
+        };
+    }
+
     macro_rules! toml_eq {
         ($expected:expr, $toml:expr) => {
             assert_eq!(Wrapper { test: $expected }, toml::from_str($toml).unwrap());
@@ -304,8 +319,21 @@ mod tests {
     }
 
     #[test]
-    fn run_task() {
-        toml_eq!(Run::Task("quux".to_owned()), r#"test = { task = "quux" }"#);
+    fn run_task_local() {
+        toml_eq!(Run::Task(task!("local")), r#"test = { task = "local" }"#);
+    }
+
+    #[test]
+    fn run_task_root() {
+        toml_eq!(Run::Task(task!(/ "root")), r#"test = { task = "/root" }"#);
+    }
+
+    #[test]
+    fn run_task_qualified() {
+        toml_eq!(
+            Run::Task(task!("fully" / "qualified")),
+            r#"test = { task = "fully/qualified" }"#
+        );
     }
 
     #[test]
@@ -335,20 +363,10 @@ mod tests {
         let task = Task {
             internal: false,
             description: None,
-            dependencies: vec![
-                TaskName::Local("local".to_owned()),
-                TaskName::Root("root".to_owned()),
-                TaskName::Qualified {
-                    project: "some".to_owned(),
-                    task: "other".to_owned(),
-                },
-            ],
+            dependencies: vec![task!("local"), task!(/ "root"), task!("some" / "other")],
             run: vec![],
         };
-        toml_eq!(
-            task,
-            r#"test = { deps = ["local", "/root", "some/other"] }"#
-        );
+        toml_eq!(task, r#"test.deps = ["local", "/root", "some/other"]"#);
     }
 
     #[test]
