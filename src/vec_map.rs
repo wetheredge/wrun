@@ -48,3 +48,9 @@ impl<T: for<'de> Deserialize<'de> + Serialize + PartialEq> PartialEq for VecMap<
         lhs.eq(&rhs)
     }
 }
+
+impl<T: for<'de> Deserialize<'de> + Serialize> FromIterator<(String, T)> for VecMap<T> {
+    fn from_iter<I: IntoIterator<Item = (String, T)>>(iter: I) -> Self {
+        Self(Vec::from_iter(iter))
+    }
+}

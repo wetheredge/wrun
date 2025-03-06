@@ -20,7 +20,7 @@ pub(crate) struct Project {
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Tool {
     #[serde(alias = "bin")]
-    binary: String,
+    pub(crate) binary: String,
     ci: Option<ToolCi>,
 }
 
@@ -102,17 +102,15 @@ impl TaskName {
         }
     }
 
-    pub(crate) fn package(&self) -> Option<&str> {
+    pub fn relative_to(self, package: impl Into<String>) -> AbsoluteTaskName {
         match self {
-            TaskName::Local(_) => None,
-            TaskName::Root(_) => Some(""),
-            TaskName::Qualified { package, task: _ } => Some(package),
+            Self::Local(task) => AbsoluteTaskName::Qualified {
+                package: package.into(),
+                task,
+            },
+            Self::Root(task) => AbsoluteTaskName::Root(task),
+            Self::Qualified { package, task } => AbsoluteTaskName::Qualified { package, task },
         }
-    }
-
-    pub(crate) fn task(&self) -> &str {
-        let (Self::Local(task) | Self::Root(task) | Self::Qualified { task, .. }) = &self;
-        task
     }
 }
 
@@ -127,12 +125,48 @@ impl FromStr for TaskName {
 impl fmt::Display for TaskName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TaskName::Local(task) => f.write_str(task),
-            TaskName::Root(task) => {
+            Self::Local(task) => f.write_str(task),
+            Self::Root(task) => {
                 f.write_str("/")?;
                 f.write_str(task)
             }
-            TaskName::Qualified { package, task } => {
+            Self::Qualified { package, task } => {
+                f.write_str(package)?;
+                f.write_str("/")?;
+                f.write_str(task)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AbsoluteTaskName {
+    Root(String),
+    Qualified { package: String, task: String },
+}
+
+impl AbsoluteTaskName {
+    pub(crate) fn package(&self) -> &str {
+        match self {
+            Self::Root(_) => "",
+            Self::Qualified { package, task: _ } => package,
+        }
+    }
+
+    pub(crate) fn task(&self) -> &str {
+        let (Self::Root(task) | Self::Qualified { task, .. }) = &self;
+        task
+    }
+}
+
+impl fmt::Display for AbsoluteTaskName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Root(task) => {
+                f.write_str("/")?;
+                f.write_str(task)
+            }
+            Self::Qualified { package, task } => {
                 f.write_str(package)?;
                 f.write_str("/")?;
                 f.write_str(task)

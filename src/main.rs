@@ -39,9 +39,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let local_package = context.local_package_name().to_owned();
+    let abs_task = |task| wrun::TaskName::new(task).relative_to(&local_package);
     let mut plan = context.plan();
     for task in &args.tasks {
-        plan.push(&wrun::TaskName::new(task))?;
+        plan.push(&abs_task(task))?;
     }
     plan.execute()?;
 

@@ -1,13 +1,16 @@
 mod data;
 mod vec_map;
 
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{self, Command};
 use std::rc::Rc;
 
 use anyhow::bail;
 
-pub use self::data::TaskName;
+pub use self::data::{AbsoluteTaskName, TaskName};
 use self::data::{Package, Tool};
 use self::vec_map::VecMap;
 
@@ -99,41 +102,73 @@ impl Context {
     }
 
     pub fn plan(&mut self) -> Plan {
-        Plan {
-            context: self,
-            plan: Vec::new(),
+        Plan::new(self)
+    }
+
+    fn dotenv(&self) -> anyhow::Result<impl Iterator<Item = (String, String)>> {
+        let mut env = HashMap::new();
+        for path in &self.env_files {
+            let path = self.root.join(path);
+            if fs::exists(&path)? {
+                for entry in dotenvy::from_path_iter(path)? {
+                    let entry = entry?;
+                    env.insert(entry.0, entry.1);
+                }
+            }
         }
+        Ok(env.into_iter())
+    }
+
+    fn tool_env(&self) -> VecMap<OsString> {
+        self.tools
+            .iter()
+            .map(|(name, tool)| {
+                let name = name.to_uppercase();
+                let binary = &tool.binary;
+                if binary.contains('/') {
+                    (name, self.root.join(binary).into_os_string())
+                } else {
+                    (name, OsString::from(binary))
+                }
+            })
+            .collect()
     }
 }
 
 #[derive(Debug)]
 pub struct Plan<'a> {
     context: &'a mut Context,
-    plan: Vec<Command>,
+    plan: Vec<PlanEntry>,
 }
 
-impl Plan<'_> {
-    pub fn push(&mut self, task: &TaskName) -> anyhow::Result<()> {
-        let package = task
-            .package()
-            .unwrap_or_else(|| self.context.local_package_name())
-            .to_owned();
-        let package = self.context.get_package(&package)?;
+impl<'a> Plan<'a> {
+    fn new(context: &'a mut Context) -> Self {
+        Self {
+            context,
+            plan: Vec::new(),
+        }
+    }
 
-        let Some(task) = package.tasks.0.get(task.task()) else {
-            bail!("Cannot find task: {task}")
+    pub fn push(&mut self, task_name: &AbsoluteTaskName) -> anyhow::Result<()> {
+        let package_name = task_name.package();
+        let package = self.context.get_package(package_name)?;
+
+        let Some(task) = package.tasks.0.get(task_name.task()) else {
+            bail!("Cannot find task: {task_name}")
         };
         let task = Rc::clone(task);
 
         for run in &task.run {
             match run {
                 data::Run::Command { command, silent } => {
-                    self.plan.push(Command {
+                    self.plan.push(PlanEntry {
+                        task: task_name.clone(),
+                        directory: Rc::new(self.context.root.join(package_name)),
                         command: command.clone(),
                         silent: *silent,
                     });
                 }
-                data::Run::Task(task) => self.push(task)?,
+                data::Run::Task(task) => self.push(&task.clone().relative_to(package_name))?,
             }
         }
 
@@ -141,8 +176,24 @@ impl Plan<'_> {
     }
 
     pub fn execute(self) -> anyhow::Result<()> {
-        for Command { command, .. } in &self.plan {
-            dbg!(command);
+        let tools = self.context.tool_env();
+
+        for entry in &self.plan {
+            if !entry.silent {
+                eprintln!("wrun({}): {}", entry.task, entry.command);
+            }
+
+            let exit = Command::new("sh")
+                .current_dir(&*entry.directory)
+                .envs(self.context.dotenv()?)
+                .envs(tools.iter())
+                .args(["-c", &entry.command])
+                .status()?;
+
+            if !exit.success() {
+                let code = exit.code().unwrap(); // FIXME
+                process::exit(code)
+            }
         }
 
         Ok(())
@@ -150,7 +201,9 @@ impl Plan<'_> {
 }
 
 #[derive(Debug)]
-struct Command {
+struct PlanEntry {
+    task: AbsoluteTaskName,
+    directory: Rc<PathBuf>,
     command: String,
     silent: bool,
 }
