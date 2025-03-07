@@ -2,13 +2,13 @@ mod data;
 mod vec_map;
 
 use std::collections::HashMap;
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::rc::Rc;
 
 use anyhow::bail;
+use regex::Regex;
 
 pub use self::data::{AbsoluteTaskName, TaskName};
 use self::data::{Package, Tool};
@@ -119,16 +119,16 @@ impl Context {
         Ok(env.into_iter())
     }
 
-    fn tool_env(&self) -> VecMap<OsString> {
+    fn tool_env(&self) -> VecMap<String> {
         self.tools
             .iter()
             .map(|(name, tool)| {
-                let name = name.to_uppercase();
-                let binary = &tool.binary;
+                let name = name.to_owned();
+                let binary = &tool.command;
                 if binary.contains('/') {
-                    (name, self.root.join(binary).into_os_string())
+                    (name, self.root.join(binary).to_string_lossy().into_owned())
                 } else {
-                    (name, OsString::from(binary))
+                    (name, binary.clone())
                 }
             })
             .collect()
@@ -177,17 +177,37 @@ impl<'a> Plan<'a> {
 
     pub fn execute(self) -> anyhow::Result<()> {
         let tools = self.context.tool_env();
+        let tool_regex = Regex::new(r"(?:^|[^\\])(\{([[:word:]-]+)\})").unwrap();
 
         for entry in &self.plan {
             if !entry.silent {
                 eprintln!("wrun({}): {}", entry.task, entry.command);
             }
 
+            // Recursively replace all instances of {tool}
+            let mut command = entry.command.clone();
+            let command = loop {
+                let mut done = true;
+                for capture in tool_regex.captures_iter(&command.clone()) {
+                    let range = capture.get(1).unwrap().range();
+                    let tool = capture.get(2).unwrap().as_str();
+
+                    if let Some(replacement) = tools.get(tool) {
+                        command.replace_range(range, replacement);
+                        done = false;
+                    }
+                }
+
+                if done {
+                    break command.as_str();
+                }
+            };
+
             let exit = Command::new("sh")
                 .current_dir(&*entry.directory)
                 .envs(self.context.dotenv()?)
                 .envs(tools.iter())
-                .args(["-c", &entry.command])
+                .args(["-c", command])
                 .status()?;
 
             if !exit.success() {

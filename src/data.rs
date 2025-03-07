@@ -11,16 +11,18 @@ use crate::VecMap;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct Project {
+    #[serde(default)]
     pub(crate) env_files: Vec<PathBuf>,
     pub(crate) tools: VecMap<Tool>,
     #[serde(flatten)]
     pub(crate) package: Package,
 }
 
+#[serde_as]
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Tool {
-    #[serde(alias = "bin")]
-    pub(crate) binary: String,
+    #[serde(alias = "cmd")]
+    pub(crate) command: String,
     ci: Option<ToolCi>,
 }
 
@@ -415,31 +417,31 @@ mod tests {
     #[test]
     fn tool_simple() {
         let tool = Tool {
-            binary: "tool".to_owned(),
+            command: "tool".to_owned(),
             ci: None,
         };
-        toml_eq!(tool, r#"test.bin = "tool""#);
+        toml_eq!(tool, r#"test.command = "tool""#);
     }
 
     #[test]
     fn tool_ci_action() {
         let tool = Tool {
-            binary: "tool".to_owned(),
+            command: "tool".to_owned(),
             ci: Some(ToolCi::Action {
                 action: "ci/action".to_owned(),
-                with: VecMap(vec![("some".to_owned(), "thing".to_owned())]),
+                with: VecMap::from(vec![("some".to_owned(), "thing".to_owned())]),
             }),
         };
         toml_eq!(
             tool,
-            r#"test = { bin = "tool", ci.action = "ci/action", ci.with.some = "thing" }"#
+            r#"test = { cmd = "tool", ci.action = "ci/action", ci.with.some = "thing" }"#
         );
     }
 
     #[test]
     fn tool_ci_binary() {
         let tool = Tool {
-            binary: "tool".to_owned(),
+            command: "tool".to_owned(),
             ci: Some(ToolCi::Binary {
                 install_action: "install/action".to_owned(),
                 with: VecMap::default(),
@@ -447,7 +449,7 @@ mod tests {
         };
         toml_eq!(
             tool,
-            r#"test = { bin = "tool", ci.install-action = "install/action" }"#
+            r#"test = { cmd = "tool", ci.install-action = "install/action" }"#
         );
     }
 }

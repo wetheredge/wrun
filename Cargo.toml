@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "development-tools::build-utils"]
 anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
 dotenvy = "0.15.7"
+regex = "1.11.1"
 serde = { version = "1.0.218", features = ["derive", "rc"] }
 serde_with = "3.12.0"
 toml = "0.8.20"

@@ -54,3 +54,9 @@ impl<T: for<'de> Deserialize<'de> + Serialize> FromIterator<(String, T)> for Vec
         Self(Vec::from_iter(iter))
     }
 }
+
+impl<T: for<'de> Deserialize<'de> + Serialize> From<Vec<(String, T)>> for VecMap<T> {
+    fn from(inner: Vec<(String, T)>) -> Self {
+        Self(inner)
+    }
+}
