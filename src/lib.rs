@@ -10,7 +10,7 @@ use std::rc::Rc;
 use anyhow::bail;
 use regex::Regex;
 
-pub use self::data::{AbsoluteTaskName, TaskName};
+pub use self::data::{AbsoluteTaskName, Task, TaskName, Tasks};
 use self::data::{Package, Tool};
 use self::vec_map::VecMap;
 
@@ -95,10 +95,13 @@ impl Context {
         }
     }
 
-    pub fn local_tasks(&self) -> &data::Tasks {
+    pub fn local_tasks(&self) -> &Tasks {
         let package = self.local.as_deref().unwrap_or("");
-        let package = self.packages.get(package).unwrap();
-        &package.tasks
+        &self.packages.get(package).unwrap().tasks
+    }
+
+    pub fn all_packages(&mut self) -> impl Iterator<Item = (&str, &Package)> {
+        self.packages.iter()
     }
 
     pub fn plan(&mut self) -> Plan {

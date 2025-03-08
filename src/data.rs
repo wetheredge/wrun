@@ -47,6 +47,12 @@ pub struct Package {
     pub(crate) tasks: Tasks,
 }
 
+impl Package {
+    pub fn tasks(&self) -> &Tasks {
+        &self.tasks
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Deserialize, Serialize)]
 #[repr(transparent)]
