@@ -193,14 +193,12 @@ impl<'a> Plan<'a> {
         Ok(())
     }
 
-    pub fn execute(self) -> anyhow::Result<()> {
+    pub fn execute(self, prerun: impl Fn(&PlanEntry)) -> anyhow::Result<()> {
         let tools = self.context.tool_env();
         let tool_regex = Regex::new(r"(?:^|[^\\])(\{([[:word:]-]+)\})").unwrap();
 
         for entry in &self.plan {
-            if !entry.silent {
-                eprintln!("wrun({}): {}", entry.task, entry.command);
-            }
+            prerun(entry);
 
             // Recursively replace all instances of {tool}
             let mut command = entry.command.clone();
@@ -239,11 +237,25 @@ impl<'a> Plan<'a> {
 }
 
 #[derive(Debug)]
-struct PlanEntry {
+pub struct PlanEntry {
     task: AbsoluteTaskName,
     directory: Rc<PathBuf>,
     command: String,
     silent: bool,
+}
+
+impl PlanEntry {
+    pub fn task(&self) -> &AbsoluteTaskName {
+        &self.task
+    }
+
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn silent(&self) -> bool {
+        self.silent
+    }
 }
 
 fn toml_from_path<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {

@@ -6,6 +6,7 @@ use anyhow::bail;
 use clap::{CommandFactory as _, Parser as _, ValueHint};
 use clap_complete::CompletionCandidate;
 use clap_complete::engine::ArgValueCompleter;
+use owo_colors::{OwoColorize as _, Stream};
 use wrun::{Task, TaskName};
 
 #[derive(Debug, clap::Parser)]
@@ -54,14 +55,12 @@ fn main() -> anyhow::Result<()> {
 
 fn list_tasks(context: &wrun::Context, all: bool) {
     let is_public = |t: &(_, &Task)| !t.1.is_internal();
-    let print_task =
-        |name, task: &Task| println!("  {name:18}  {}", task.description().unwrap_or_default());
+    let print_task = |name: &str, task: &Task| {
+        let name = name.if_supports_color(Stream::Stdout, |s| s.purple());
+        println!("  {name:18}  {}", task.description().unwrap_or_default())
+    };
 
-    if all {
-        println!("All tasks:");
-    } else {
-        println!("Local tasks:");
-    }
+    println!("Local:");
 
     for (name, task) in context.local_tasks().iter().filter(is_public) {
         print_task(name, task);
@@ -76,7 +75,9 @@ fn list_tasks(context: &wrun::Context, all: bool) {
 
             let mut tasks = package.tasks().iter().filter(is_public).peekable();
             if tasks.peek().is_some() {
-                println!("\n{name}/");
+                let name = &format!("{name}/");
+                let name = name.if_supports_color(Stream::Stdout, |s| s.blue());
+                println!("In {name}:");
                 for (name, task) in tasks {
                     print_task(name, task);
                 }
@@ -92,7 +93,13 @@ fn execute_tasks(mut context: wrun::Context, tasks: &[String]) -> anyhow::Result
     for task in tasks {
         plan.push(&abs_task(task))?;
     }
-    plan.execute()?;
+    plan.execute(|entry| {
+        if !entry.silent() {
+            let task = entry.task();
+            let task = task.if_supports_color(Stream::Stderr, |s| s.purple());
+            eprintln!("wrun({task}): {}", entry.command());
+        }
+    })?;
 
     Ok(())
 }
