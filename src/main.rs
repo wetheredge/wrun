@@ -41,47 +41,55 @@ fn main() -> anyhow::Result<()> {
         env::current_dir()?
     };
 
-    let mut context = wrun::Context::from_directory(directory)?;
+    let context = wrun::Context::from_directory(directory)?;
 
     if args.tasks.is_empty() {
-        let is_public = |t: &(_, &Task)| !t.1.is_internal();
-        let print_task =
-            |name, task: &Task| println!("  {name:18}  {}", task.description().unwrap_or_default());
-
-        if args.all {
-            println!("All tasks:");
-        } else {
-            println!("Local tasks:");
-        }
-
-        for (name, task) in context.local_tasks().iter().filter(is_public) {
-            print_task(name, task);
-        }
-
-        if args.all {
-            let local = context.local_package_name();
-            for (name, package) in context.packages() {
-                if name == local {
-                    continue;
-                }
-
-                let mut tasks = package.tasks().iter().filter(is_public).peekable();
-                if tasks.peek().is_some() {
-                    println!("\n{name}/");
-                    for (name, task) in tasks {
-                        print_task(name, task);
-                    }
-                }
-            }
-        }
+        list_tasks(&context, args.all);
 
         return Ok(());
     }
 
+    execute_tasks(context, &args.tasks)
+}
+
+fn list_tasks(context: &wrun::Context, all: bool) {
+    let is_public = |t: &(_, &Task)| !t.1.is_internal();
+    let print_task =
+        |name, task: &Task| println!("  {name:18}  {}", task.description().unwrap_or_default());
+
+    if all {
+        println!("All tasks:");
+    } else {
+        println!("Local tasks:");
+    }
+
+    for (name, task) in context.local_tasks().iter().filter(is_public) {
+        print_task(name, task);
+    }
+
+    if all {
+        let local = context.local_package_name();
+        for (name, package) in context.packages() {
+            if name == local {
+                continue;
+            }
+
+            let mut tasks = package.tasks().iter().filter(is_public).peekable();
+            if tasks.peek().is_some() {
+                println!("\n{name}/");
+                for (name, task) in tasks {
+                    print_task(name, task);
+                }
+            }
+        }
+    }
+}
+
+fn execute_tasks(mut context: wrun::Context, tasks: &[String]) -> anyhow::Result<()> {
     let local_package = context.local_package_name().to_owned();
     let abs_task = |task| TaskName::new(task).relative_to(&local_package);
     let mut plan = context.plan();
-    for task in &args.tasks {
+    for task in tasks {
         plan.push(&abs_task(task))?;
     }
     plan.execute()?;
