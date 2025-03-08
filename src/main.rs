@@ -6,13 +6,17 @@ use anyhow::bail;
 use clap::{CommandFactory as _, Parser as _, ValueHint};
 use clap_complete::CompletionCandidate;
 use clap_complete::engine::ArgValueCompleter;
-use wrun::TaskName;
+use wrun::{Task, TaskName};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
     #[clap(long, aliases = ["cwd", "dir"])]
     #[clap(value_hint = ValueHint::DirPath)]
     directory: Option<PathBuf>,
+
+    #[clap(short, long)]
+    all: bool,
+
     #[clap(add = ArgValueCompleter::new(TaskCompleter))]
     tasks: Vec<String>,
 }
@@ -40,12 +44,34 @@ fn main() -> anyhow::Result<()> {
     let mut context = wrun::Context::from_directory(directory)?;
 
     if args.tasks.is_empty() {
-        let tasks = context.local_tasks();
+        let is_public = |t: &(_, &Task)| !t.1.is_internal();
+        let print_task =
+            |name, task: &Task| println!("  {name:18}  {}", task.description().unwrap_or_default());
 
-        println!("Local tasks:");
-        for (name, task) in tasks.iter() {
-            if !task.is_internal() {
-                println!("  {name:18}  {}", task.description().unwrap_or_default());
+        if args.all {
+            println!("All tasks:");
+        } else {
+            println!("Local tasks:");
+        }
+
+        for (name, task) in context.local_tasks().iter().filter(is_public) {
+            print_task(name, task);
+        }
+
+        if args.all {
+            let local = context.local_package_name();
+            for (name, package) in context.packages() {
+                if name == local {
+                    continue;
+                }
+
+                let mut tasks = package.tasks().iter().filter(is_public).peekable();
+                if tasks.peek().is_some() {
+                    println!("\n{name}/");
+                    for (name, task) in tasks {
+                        print_task(name, task);
+                    }
+                }
             }
         }
 
@@ -78,7 +104,7 @@ impl clap_complete::engine::ValueCompleter for TaskCompleter {
 
             // TODO: Take --directory into account
             let dir = env::current_dir().ok()?;
-            let mut context = wrun::Context::from_directory(dir).ok()?;
+            let context = wrun::Context::from_directory(dir).ok()?;
 
             let help = |task: &wrun::Task| task.description().map(|s| s.to_owned().into());
 
@@ -87,8 +113,8 @@ impl clap_complete::engine::ValueCompleter for TaskCompleter {
                 candidates.push(CompletionCandidate::new(name).help(help(task)));
             }
 
-            let local = context.local_package_name().to_owned();
-            for (package_name, package) in context.all_packages() {
+            let local = context.local_package_name();
+            for (package_name, package) in context.packages() {
                 for (name, task) in package.tasks().iter() {
                     candidates.push(
                         CompletionCandidate::new(format!("{package_name}/{name}"))

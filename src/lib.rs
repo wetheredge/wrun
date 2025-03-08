@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::rc::Rc;
 
-use anyhow::bail;
+use anyhow::{Context as _, bail};
 use regex::Regex;
 
 pub use self::data::{AbsoluteTaskName, Task, TaskName, Tasks};
@@ -28,13 +28,13 @@ pub struct Context {
 
 impl Context {
     pub fn from_directory(dir: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let mut package_dir = None;
+        let mut local_package_dir = None;
         let mut root = None;
 
         for dir in dir.as_ref().ancestors() {
             let try_package = dir.join(PACKAGE_FILE);
-            if fs::exists(&try_package)? && package_dir.is_none() {
-                package_dir = Some(dir);
+            if fs::exists(&try_package)? && local_package_dir.is_none() {
+                local_package_dir = Some(dir);
             }
 
             let try_project = dir.join(PROJECT_FILE);
@@ -49,6 +49,7 @@ impl Context {
 
         let data::Project {
             env_files,
+            packages,
             tools,
             package: root_package,
         } = toml_from_path(&root.join(PROJECT_FILE))?;
@@ -61,12 +62,26 @@ impl Context {
         };
         context.packages.insert(String::new(), root_package);
 
-        if let Some(path) = package_dir {
+        for dir in packages {
+            let name = dir.to_string_lossy().into_owned();
+            let package = context
+                .load_package(&dir)
+                .with_context(|| format!("loading package from {}", dir.display()))?;
+            context.packages.insert(name, package);
+        }
+
+        if let Some(path) = local_package_dir {
             let relative = path.strip_prefix(&context.root).unwrap();
-            let name = relative.to_string_lossy().into_owned();
-            let package = context.load_package(relative)?;
-            context.packages.insert(name.clone(), package);
-            context.local = Some(name);
+            let name = relative.to_string_lossy();
+
+            if context.packages.get_index(&name).is_none() {
+                bail!(
+                    "Not in packages list defined by project in `{}`",
+                    &context.root.display(),
+                );
+            }
+
+            context.local = Some(name.into_owned());
         }
 
         Ok(context)
@@ -100,7 +115,7 @@ impl Context {
         &self.packages.get(package).unwrap().tasks
     }
 
-    pub fn all_packages(&mut self) -> impl Iterator<Item = (&str, &Package)> {
+    pub fn packages(&self) -> impl Iterator<Item = (&str, &Package)> {
         self.packages.iter()
     }
 

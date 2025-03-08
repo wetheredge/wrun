@@ -13,6 +13,9 @@ use crate::VecMap;
 pub(crate) struct Project {
     #[serde(default)]
     pub(crate) env_files: Vec<PathBuf>,
+    #[serde(default)]
+    pub(crate) packages: Vec<PathBuf>,
+
     pub(crate) tools: VecMap<Tool>,
     #[serde(flatten)]
     pub(crate) package: Package,
