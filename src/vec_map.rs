@@ -1,16 +1,20 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::serde_as;
 
 #[serde_as]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 #[repr(transparent)]
-pub(crate) struct VecMap<T: for<'a> Deserialize<'a> + Serialize>(
-    #[serde_as(as = "serde_with::Map<_, _>")] Vec<(String, T)>,
-);
+pub(crate) struct VecMap<T>(Vec<(String, T)>);
 
-impl<T: for<'de> Deserialize<'de> + Serialize> VecMap<T> {
+impl<T> VecMap<T> {
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub(crate) fn get<'a>(&'a self, key: &str) -> Option<&'a T> {
         self.iter()
             .find_map(|entry| (entry.0 == key).then_some(entry.1))
@@ -34,13 +38,13 @@ impl<T: for<'de> Deserialize<'de> + Serialize> VecMap<T> {
     }
 }
 
-impl<T: for<'de> Deserialize<'de> + Serialize> Default for VecMap<T> {
+impl<T> Default for VecMap<T> {
     fn default() -> Self {
         Self(Vec::default())
     }
 }
 
-impl<T: for<'de> Deserialize<'de> + Serialize + PartialEq> PartialEq for VecMap<T> {
+impl<T: PartialEq> PartialEq for VecMap<T> {
     fn eq(&self, other: &Self) -> bool {
         type Map<'a, T> = HashMap<&'a str, &'a T>;
         let lhs = self.iter().collect::<Map<T>>();
@@ -49,14 +53,62 @@ impl<T: for<'de> Deserialize<'de> + Serialize + PartialEq> PartialEq for VecMap<
     }
 }
 
-impl<T: for<'de> Deserialize<'de> + Serialize> FromIterator<(String, T)> for VecMap<T> {
+impl<T> FromIterator<(String, T)> for VecMap<T> {
     fn from_iter<I: IntoIterator<Item = (String, T)>>(iter: I) -> Self {
         Self(Vec::from_iter(iter))
     }
 }
 
-impl<T: for<'de> Deserialize<'de> + Serialize> From<Vec<(String, T)>> for VecMap<T> {
+impl<T> From<Vec<(String, T)>> for VecMap<T> {
     fn from(inner: Vec<(String, T)>) -> Self {
         Self(inner)
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for VecMap<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de;
+
+        struct VecMapVisitor<T>(PhantomData<fn() -> VecMap<T>>);
+
+        impl<'de, T: Deserialize<'de>> de::Visitor<'de> for VecMapVisitor<T> {
+            type Value = VecMap<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a map")
+            }
+
+            fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut map =
+                    VecMap::from(Vec::with_capacity(access.size_hint().unwrap_or_default()));
+
+                while let Some((key, value)) = access.next_entry()? {
+                    map.insert(key, value);
+                }
+
+                Ok(map)
+            }
+        }
+
+        deserializer.deserialize_map(VecMapVisitor(PhantomData))
+    }
+}
+
+impl<T: Serialize> Serialize for VecMap<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (k, v) in self.iter() {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
     }
 }
