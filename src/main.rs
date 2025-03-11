@@ -3,12 +3,14 @@ mod cli;
 use std::{env, fs};
 
 use anyhow::bail;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use owo_colors::{OwoColorize as _, Stream};
 use wrun::{Task, TaskName};
 
 use self::cli::Action;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let args = cli::parse();
 
     let directory = if let Some(dir) = &args.directory {
@@ -26,6 +28,7 @@ fn main() -> anyhow::Result<()> {
     match args.action() {
         Action::List { all } => list_tasks(&context, all),
         Action::Run(tasks) => execute_tasks(context, tasks)?,
+        Action::FetchTools => fetch_tools(&context).await?,
     }
 
     Ok(())
@@ -62,6 +65,48 @@ fn list_tasks(context: &wrun::Context, all: bool) {
             }
         }
     }
+}
+
+async fn fetch_tools(context: &wrun::Context) -> anyhow::Result<()> {
+    #[derive(Clone)]
+    struct Progress(MultiProgress);
+    struct Bar(ProgressBar);
+
+    impl wrun::tools::DownloadProgress for Progress {
+        type Bar = Bar;
+
+        fn start(&self, name: &str, len: Option<u64>) -> Self::Bar {
+            let bar = if let Some(len) = len {
+                let style = ProgressStyle::with_template(
+                    "{prefix:20}  {wide_bar} {binary_bytes_per_sec:>15} {eta:>5}",
+                )
+                .unwrap();
+                ProgressBar::new(len).with_style(style)
+            } else {
+                let style = ProgressStyle::with_template("{prefix:20}  {spinner}").unwrap();
+                ProgressBar::new_spinner().with_style(style)
+            };
+            let bar = bar.with_prefix(name.to_owned());
+            Bar(self.0.add(bar))
+        }
+    }
+
+    impl wrun::tools::DownloadProgressBar for Bar {
+        fn update(&mut self, delta: u64) {
+            self.0.inc(delta);
+        }
+
+        fn done(self) {
+            self.0.finish();
+        }
+    }
+
+    let progress = MultiProgress::new();
+    let manager = context.fetch_tools();
+
+    manager.run(Progress(progress)).await?;
+
+    Ok(())
 }
 
 fn execute_tasks(mut context: wrun::Context, tasks: &[String]) -> anyhow::Result<()> {

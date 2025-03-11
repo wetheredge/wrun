@@ -1,4 +1,5 @@
 mod data;
+pub mod tools;
 mod vec_map;
 
 use std::collections::HashMap;
@@ -10,8 +11,9 @@ use std::rc::Rc;
 use anyhow::{Context as _, bail};
 use regex::Regex;
 
+use self::data::Package;
 pub use self::data::{AbsoluteTaskName, Task, TaskName, Tasks};
-use self::data::{Package, Tool};
+use self::tools::Tool;
 use self::vec_map::VecMap;
 
 const PROJECT_FILE: &str = "wrun-project.toml";
@@ -102,6 +104,10 @@ impl Context {
         Ok(package)
     }
 
+    pub fn fetch_tools(&self) -> tools::DownloadManager<'_> {
+        tools::DownloadManager::new(self.root.join(".wrun"), &self.tools)
+    }
+
     pub fn local_package_name(&self) -> &str {
         if let Some(local) = &self.local {
             local
@@ -138,18 +144,20 @@ impl Context {
     }
 
     fn tool_env(&self) -> VecMap<String> {
-        self.tools
-            .iter()
-            .map(|(name, tool)| {
-                let name = name.to_owned();
-                let binary = &tool.command;
-                if binary.contains('/') {
-                    (name, self.root.join(binary).to_string_lossy().into_owned())
-                } else {
-                    (name, binary.clone())
-                }
-            })
-            .collect()
+        todo!()
+        // self.tools
+        //     .iter()
+        //     .map(|(name, tool)| {
+        //         let name = name.to_owned();
+        //         let binary = &tool.command;
+        //         if binary.contains('/') {
+        //             (name,
+        // self.root.join(binary).to_string_lossy().into_owned())
+        //         } else {
+        //             (name, binary.clone())
+        //         }
+        //     })
+        //     .collect()
     }
 }
 

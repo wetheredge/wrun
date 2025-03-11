@@ -12,8 +12,16 @@ anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
 clap_complete = { version = "4.5.46", features = ["unstable-dynamic"] }
 dotenvy = "0.15.7"
+flate2 = "1.1.0"
+futures-util = "0.3.31"
+indicatif = "0.17.11"
 owo-colors = { version = "4.2.0", features = ["supports-colors"] }
 regex = "1.11.1"
+reqwest = { version = "0.12.12", features = ["charset", "http2", "macos-system-configuration", "rustls-tls", "stream"], default-features = false }
 serde = { version = "1.0.218", features = ["derive", "rc"] }
 serde_with = "3.12.0"
+tar = "0.4.44"
+tempfile = "3.18.0"
+thiserror = "2.0.12"
+tokio = { version = "1.44.0", features = ["rt", "macros", "rt-multi-thread"] }
 toml = "0.8.20"

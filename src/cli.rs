@@ -28,6 +28,10 @@ struct ActionArgs {
     #[clap(short, long)]
     all: bool,
 
+    /// Download all tools
+    #[clap(long)]
+    fetch: bool,
+
     /// Run one or more tasks
     #[clap(add = ArgValueCompleter::new(TaskCompleter))]
     tasks: Vec<String>,
@@ -37,13 +41,16 @@ struct ActionArgs {
 pub(crate) enum Action<'a> {
     List { all: bool },
     Run(&'a [String]),
+    FetchTools,
 }
 
 impl Args {
     pub(crate) fn action(&self) -> Action {
         let action = &self.action;
 
-        if action.all {
+        if action.fetch {
+            Action::FetchTools
+        } else if action.all {
             Action::List { all: true }
         } else if action.tasks.is_empty() {
             Action::List { all: false }
