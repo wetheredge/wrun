@@ -8,10 +8,9 @@ use std::process::{self, Command};
 use std::rc::Rc;
 
 use anyhow::{Context as _, bail};
-use regex::Regex;
 
+use self::data::Package;
 pub use self::data::{AbsoluteTaskName, Task, TaskName, Tasks};
-use self::data::{Package, Tool};
 use self::vec_map::VecMap;
 
 const PROJECT_FILE: &str = "wrun-project.toml";
@@ -21,7 +20,6 @@ const PACKAGE_FILE: &str = "wrun.toml";
 pub struct Context {
     root: PathBuf,
     env_files: Vec<PathBuf>,
-    tools: VecMap<Tool>,
     local: Option<String>,
     packages: VecMap<Package>,
 }
@@ -50,13 +48,11 @@ impl Context {
         let data::Project {
             env_files,
             packages,
-            tools,
             package: root_package,
         } = toml_from_path(&root.join(PROJECT_FILE))?;
         let mut context = Self {
             root,
             env_files,
-            tools,
             local: None,
             packages: VecMap::default(),
         };
@@ -136,21 +132,6 @@ impl Context {
         }
         Ok(env.into_iter())
     }
-
-    fn tool_env(&self) -> VecMap<String> {
-        self.tools
-            .iter()
-            .map(|(name, tool)| {
-                let name = name.to_owned();
-                let binary = &tool.command;
-                if binary.contains('/') {
-                    (name, self.root.join(binary).to_string_lossy().into_owned())
-                } else {
-                    (name, binary.clone())
-                }
-            })
-            .collect()
-    }
 }
 
 #[derive(Debug)]
@@ -194,36 +175,14 @@ impl<'a> Plan<'a> {
     }
 
     pub fn execute(self, prerun: impl Fn(&PlanEntry)) -> anyhow::Result<()> {
-        let tools = self.context.tool_env();
-        let tool_regex = Regex::new(r"(?:^|[^\\])(\{([[:word:]-]+)\})").unwrap();
-
         for entry in &self.plan {
             prerun(entry);
-
-            // Recursively replace all instances of {tool}
-            let mut command = entry.command.clone();
-            let command = loop {
-                let mut done = true;
-                for capture in tool_regex.captures_iter(&command.clone()) {
-                    let range = capture.get(1).unwrap().range();
-                    let tool = capture.get(2).unwrap().as_str();
-
-                    if let Some(replacement) = tools.get(tool) {
-                        command.replace_range(range, replacement);
-                        done = false;
-                    }
-                }
-
-                if done {
-                    break command.as_str();
-                }
-            };
 
             let exit = Command::new("sh")
                 .current_dir(&*entry.directory)
                 .envs(self.context.dotenv()?)
-                .envs(tools.iter())
-                .args(["-c", command])
+                .env("ROOT", &self.context.root)
+                .args(["-c", entry.command()])
                 .status()?;
 
             if !exit.success() {

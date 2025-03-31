@@ -16,33 +16,8 @@ pub(crate) struct Project {
     #[serde(default)]
     pub(crate) packages: Vec<PathBuf>,
 
-    pub(crate) tools: VecMap<Tool>,
     #[serde(flatten)]
     pub(crate) package: Package,
-}
-
-#[serde_as]
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
-pub struct Tool {
-    #[serde(alias = "cmd")]
-    pub(crate) command: String,
-    ci: Option<ToolCi>,
-}
-
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
-#[serde(untagged)]
-enum ToolCi {
-    Action {
-        action: String,
-        #[serde(default)]
-        with: VecMap<String>,
-    },
-    #[serde(rename_all = "kebab-case")]
-    Binary {
-        install_action: String,
-        #[serde(default)]
-        with: VecMap<String>,
-    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -420,45 +395,6 @@ mod tests {
         toml_eq!(
             task,
             r#"test.run = [{ task = "local" }, { task = "/root" }, { task = "some/other" }]"#
-        );
-    }
-
-    #[test]
-    fn tool_simple() {
-        let tool = Tool {
-            command: "tool".to_owned(),
-            ci: None,
-        };
-        toml_eq!(tool, r#"test.command = "tool""#);
-    }
-
-    #[test]
-    fn tool_ci_action() {
-        let tool = Tool {
-            command: "tool".to_owned(),
-            ci: Some(ToolCi::Action {
-                action: "ci/action".to_owned(),
-                with: VecMap::from(vec![("some".to_owned(), "thing".to_owned())]),
-            }),
-        };
-        toml_eq!(
-            tool,
-            r#"test = { cmd = "tool", ci.action = "ci/action", ci.with.some = "thing" }"#
-        );
-    }
-
-    #[test]
-    fn tool_ci_binary() {
-        let tool = Tool {
-            command: "tool".to_owned(),
-            ci: Some(ToolCi::Binary {
-                install_action: "install/action".to_owned(),
-                with: VecMap::default(),
-            }),
-        };
-        toml_eq!(
-            tool,
-            r#"test = { cmd = "tool", ci.install-action = "install/action" }"#
         );
     }
 }
