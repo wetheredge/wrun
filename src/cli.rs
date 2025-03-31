@@ -23,6 +23,7 @@ pub struct Args {
 }
 
 #[derive(Debug, clap::Args)]
+#[group(multiple = false)]
 struct ActionArgs {
     /// List all tasks, not just local ones
     #[clap(short, long)]

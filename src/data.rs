@@ -22,6 +22,7 @@ pub(crate) struct Project {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Package {
+    #[serde(default)]
     pub(crate) tasks: Tasks,
 }
 
@@ -32,7 +33,7 @@ impl Package {
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[repr(transparent)]
 pub struct Tasks(pub(crate) VecMap<Rc<Task>>);
 
