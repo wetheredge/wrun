@@ -175,12 +175,15 @@ impl<'a> Plan<'a> {
     }
 
     pub fn execute(self, prerun: impl Fn(&PlanEntry)) -> anyhow::Result<()> {
+        let wrun_bin = std::env::current_exe().expect("path to wrun");
+
         for entry in &self.plan {
             prerun(entry);
 
             let exit = Command::new("sh")
                 .current_dir(&*entry.directory)
                 .envs(self.context.dotenv()?)
+                .env("WRUN", &wrun_bin)
                 .env("ROOT", &self.context.root)
                 .args(["-c", entry.command()])
                 .status()?;
