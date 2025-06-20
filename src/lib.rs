@@ -162,7 +162,7 @@ impl<'a> Plan<'a> {
                 data::Run::Command { command, silent } => {
                     self.plan.push(PlanEntry {
                         task: task_name.clone(),
-                        directory: Rc::new(self.context.root.join(package_name)),
+                        directory: self.context.root.join(package_name),
                         command: command.clone(),
                         silent: *silent,
                     });
@@ -201,7 +201,7 @@ impl<'a> Plan<'a> {
 #[derive(Debug)]
 pub struct PlanEntry {
     task: AbsoluteTaskName,
-    directory: Rc<PathBuf>,
+    directory: PathBuf,
     command: String,
     silent: bool,
 }
