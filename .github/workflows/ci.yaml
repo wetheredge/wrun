@@ -1,0 +1,89 @@
+name: Continuous Integration
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+    branches:
+      - main
+      - ci
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  SCCACHE_GHA_ENABLED: true
+
+jobs:
+  unused-dependencies:
+    name: No unused dependencies
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2.53.2
+        with:
+          tool: cargo-shear
+      - run: cargo shear
+
+  cargo-sort:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2.53.2
+        with:
+          tool: cargo-sort
+      - run: cargo sort --check --grouped --no-format
+
+  rustfmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - run: rustup component add --toolchain nightly rustfmt
+      - run: cargo +nightly fmt --check
+
+  clippy:
+    runs-on: ubuntu-24.04
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - run: cargo clippy --all-targets
+
+  tests:
+    runs-on: ubuntu-24.04
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2.53.2
+        with:
+          tool: cargo-nextest
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - run: cargo nextest run
+
+  passed:
+    runs-on: ubuntu-24.04
+    needs:
+      - unused-dependencies
+      - cargo-sort
+      - rustfmt
+      - clippy
+      - tests
+    steps:
+      - run: 'true'
