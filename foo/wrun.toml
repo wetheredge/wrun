@@ -1,0 +1,9 @@
+# Packages can only define tasks
+
+[tasks.hola]
+desc = "bonjour"
+run = "echo hej fra foo!"
+
+[tasks.dir]
+desc = "Tasks always run in the directory they are defined in"
+run = "basename $(pwd)"

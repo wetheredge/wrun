@@ -1,0 +1,35 @@
+# Load environment variables from these files (if they exist) before running
+# each task. Modifications by one task will affect subsequent tasks.
+env-files = [".env", ".env.local"]
+
+packages = ["foo"]
+
+[tasks.hallo]
+desc = "toki!"
+# The @ prefix skips printing the command before running it
+run = "@cowsay 你好"
+# or without any shorthands:
+# run = [{ command = "cowsay 你好", silent = true }]
+
+[tasks.one-task]
+description = "to rule them all and in the darkness run them"
+run = [
+  "@echo Tasks can run multiple things, even a mixture of commands and other tasks",
+  { task = "hallo" },
+  # Table format for commands cannot use the @ prefix
+  { cmd = "echo Even tasks from anywhere else in the project", silent = true },
+  { task = "foo/hola" },
+  "@echo If a command fails, wrun immediately exits with the same error code",
+  "exit 42",
+  "echo this never runs :(",
+]
+
+[tasks.format]
+desc = "Something actually useful"
+# You can also call other tasks:
+run = [{ task = "indirectly-rustfmt" }]
+
+[tasks.indirectly-rustfmt]
+# Hide this task from the task list and disallow running it directly
+internal = true
+run = "cargo +nightly fmt"
