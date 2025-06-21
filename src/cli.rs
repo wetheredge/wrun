@@ -11,8 +11,17 @@ pub(crate) fn parse() -> Args {
     Args::parse()
 }
 
+static AFTER_SHORT_HELP: &str = "By default, wrun prints the list of local tasks";
+static AFTER_LONG_HELP: &str = "By default, wrun prints the list of local tasks.
+
+Tasks can be specified in 3 ways:
+- foo: The task `foo` defined in the current package (a directory with a wrun.toml file)
+- bar/baz: `baz` from the package `bar`
+- /quux: `quux` from the project root";
+
 #[derive(Debug, Parser)]
-#[command(after_help = "By default, wrun prints the list of local tasks")]
+#[command(after_help = AFTER_SHORT_HELP)]
+#[command(after_long_help = AFTER_LONG_HELP)]
 pub struct Args {
     #[clap(long, aliases = ["cwd", "dir"])]
     #[clap(value_hint = ValueHint::DirPath)]
