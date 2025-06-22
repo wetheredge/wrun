@@ -26,6 +26,7 @@ fn main() -> anyhow::Result<()> {
     match args.action() {
         Action::List { all } => list_tasks(&context, all),
         Action::Run(tasks) => execute_tasks(context, tasks)?,
+        Action::Version => println!("{}", env!("CARGO_PKG_VERSION")),
     }
 
     Ok(())

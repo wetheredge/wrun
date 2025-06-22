@@ -42,19 +42,26 @@ struct ActionArgs {
     /// Run one or more tasks
     #[clap(add = ArgValueCompleter::new(TaskCompleter))]
     tasks: Vec<String>,
+
+    /// Print version
+    #[clap(short = 'V', long)]
+    version: bool,
 }
 
 #[derive(Debug)]
 pub(crate) enum Action<'a> {
     List { all: bool },
     Run(&'a [String]),
+    Version,
 }
 
 impl Args {
     pub(crate) fn action(&self) -> Action {
         let action = &self.action;
 
-        if action.all {
+        if action.version {
+            Action::Version
+        } else if action.all {
             Action::List { all: true }
         } else if action.tasks.is_empty() {
             Action::List { all: false }
