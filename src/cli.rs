@@ -20,6 +20,7 @@ Tasks can be specified in 3 ways:
 - /quux: `quux` from the project root";
 
 #[derive(Debug, Parser)]
+#[command(about = env!("CARGO_PKG_DESCRIPTION"))]
 #[command(after_help = AFTER_SHORT_HELP)]
 #[command(after_long_help = AFTER_LONG_HELP)]
 pub struct Args {
