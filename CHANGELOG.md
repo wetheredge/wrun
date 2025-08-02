@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `tasks.*.silent` flag to set the default silent/loud setting for commands run
+  by that task. Does not propagate to subtasks.
+
 ## [0.1.2] - 2025-07-02
 
 ### Changed

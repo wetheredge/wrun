@@ -55,6 +55,8 @@ pub struct Task {
     #[serde(default)]
     #[serde_as(as = "serde_with::OneOrMany<_>")]
     pub(crate) run: Vec<Run>,
+    #[serde(default, skip_serializing_if = "skip_false")]
+    silent: bool,
 }
 
 impl Task {
@@ -64,6 +66,10 @@ impl Task {
 
     pub fn is_internal(&self) -> bool {
         self.internal
+    }
+
+    pub fn is_silent(&self) -> bool {
+        self.silent
     }
 }
 
@@ -164,7 +170,10 @@ impl fmt::Display for AbsoluteTaskName {
 
 #[derive(Debug, Serialize, PartialEq)]
 pub enum Run {
-    Command { command: String, silent: bool },
+    Command {
+        command: String,
+        silent: Option<bool>,
+    },
     Task(TaskName),
 }
 
@@ -189,10 +198,10 @@ impl<'de> Deserialize<'de> for Run {
                 E: de::Error,
             {
                 let mut command = v;
-                let mut silent = false;
+                let mut silent = None;
                 if let Some(s) = command.strip_prefix('@') {
                     command = s;
-                    silent = true;
+                    silent = Some(true);
                 }
 
                 let command = command.to_owned();
@@ -296,7 +305,7 @@ mod tests {
         test: T,
     }
 
-    fn command(command: &str, silent: bool) -> Run {
+    fn command(command: &str, silent: Option<bool>) -> Run {
         Run::Command {
             command: command.to_owned(),
             silent,
@@ -331,15 +340,18 @@ mod tests {
 
     #[test]
     fn run_command_shorthand() {
-        toml_eq!(command("echo loud", false), r#"test = "echo loud""#);
-        toml_eq!(command("echo silent", true), r#"test = "@echo silent""#);
+        toml_eq!(command("echo loud", None), r#"test = "echo loud""#);
+        toml_eq!(
+            command("echo silent", Some(true)),
+            r#"test = "@echo silent""#
+        );
     }
 
     #[test]
     fn run_command() {
-        toml_eq!(command("foo", false), r#"test = { cmd = "foo" }"#);
+        toml_eq!(command("foo", None), r#"test = { cmd = "foo" }"#);
         toml_eq!(
-            command("bar", true),
+            command("bar", Some(true)),
             r#"test = { command = "bar", silent = true }"#
         );
     }
@@ -367,7 +379,8 @@ mod tests {
         let task = Task {
             internal: false,
             description: None,
-            run: vec![command("echo test", true)],
+            run: vec![command("echo test", Some(true))],
+            silent: false,
         };
         toml_eq!(task, r#"test = { run = "@echo test" }"#);
     }
@@ -377,7 +390,8 @@ mod tests {
         let task = Task {
             internal: false,
             description: None,
-            run: vec![command("one", false), command("two", false)],
+            run: vec![command("one", None), command("two", None)],
+            silent: false,
         };
         toml_eq!(task, r#"test = { run = ["one", "two"] }"#);
     }
@@ -392,10 +406,25 @@ mod tests {
                 Run::Task(task!(/ "root")),
                 Run::Task(task!("some" / "other")),
             ],
+            silent: false,
         };
         toml_eq!(
             task,
             r#"test.run = [{ task = "local" }, { task = "/root" }, { task = "some/other" }]"#
+        );
+    }
+
+    #[test]
+    fn silent_task() {
+        let task = Task {
+            internal: false,
+            description: None,
+            run: vec![command("echo foo", Some(true)), command("mkdir bar", None)],
+            silent: true,
+        };
+        toml_eq!(
+            task,
+            r#"test = { run = ["@echo foo", "mkdir bar"], silent = true }"#
         );
     }
 }

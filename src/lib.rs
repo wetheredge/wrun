@@ -164,7 +164,7 @@ impl<'a> Plan<'a> {
                         task: task_name.clone(),
                         directory: self.context.root.join(package_name),
                         command: command.clone(),
-                        silent: *silent,
+                        silent: silent.unwrap_or(task.is_silent()),
                     });
                 }
                 data::Run::Task(task) => self.push(&task.clone().relative_to(package_name))?,
