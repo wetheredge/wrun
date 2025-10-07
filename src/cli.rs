@@ -56,7 +56,7 @@ pub(crate) enum Action<'a> {
 }
 
 impl Args {
-    pub(crate) fn action(&self) -> Action {
+    pub(crate) fn action(&self) -> Action<'_> {
         let action = &self.action;
 
         if action.version {

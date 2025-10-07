@@ -115,7 +115,7 @@ impl Context {
         self.packages.iter()
     }
 
-    pub fn plan(&mut self) -> Plan {
+    pub fn plan(&mut self) -> Plan<'_> {
         Plan::new(self)
     }
 
