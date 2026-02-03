@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Update all dependencies
+
 ## [0.1.5] - 2025-12-01
 
 ### Changed
