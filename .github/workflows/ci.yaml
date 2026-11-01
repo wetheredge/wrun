@@ -22,7 +22,7 @@ env:
 jobs:
   unused-dependencies:
     name: No unused dependencies
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -33,7 +33,7 @@ jobs:
       - run: cargo shear
 
   cargo-sort:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -44,7 +44,7 @@ jobs:
       - run: cargo sort --check --grouped --no-format
 
   rustfmt:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -53,7 +53,7 @@ jobs:
       - run: cargo +nightly fmt --check
 
   clippy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       RUSTC_WRAPPER: sccache
     steps:
@@ -64,7 +64,7 @@ jobs:
       - run: cargo clippy --all-targets --locked
 
   tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       RUSTC_WRAPPER: sccache
     steps:
@@ -78,7 +78,7 @@ jobs:
       - run: cargo nextest run
 
   flake:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -89,7 +89,7 @@ jobs:
       - run: nix build
 
   passed:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs:
       - unused-dependencies
       - cargo-sort
